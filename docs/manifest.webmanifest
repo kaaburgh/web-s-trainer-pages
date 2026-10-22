@@ -1,0 +1,15 @@
+{
+  "name": "SET Lab — тренировка",
+  "short_name": "SET Lab",
+  "description": "Неограниченные тренировки SET с подсказками и таймером.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f7f4",
+  "theme_color": "#f7f7f4",
+  "icons": [
+    {"src": "./icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any"},
+    {"src": "./icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ]
+}
