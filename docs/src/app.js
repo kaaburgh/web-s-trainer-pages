@@ -2,6 +2,8 @@ import { findSets, generateBoard, isSet, keyForSet, newRandomSeed } from './engi
 import { cardLabel, cardSvg } from './cards.js';
 import { getStats, saveSession } from './storage.js';
 import { elapsedSeconds, formatTime, hintPenaltySeconds, scoredSeconds, HINT_PENALTY_SECONDS } from './time.js';
+import { DEAL_DURATION_MS, DEAL_FLIGHT_MS, DEAL_STEP_MS } from './deal.js';
+import { chooseHintMove } from './hints.js';
 
 const $ = selector => document.querySelector(selector);
 const boardElement = $('#board');
@@ -20,8 +22,9 @@ let selection = [];
 let buttonElements = [];
 let seed = '';
 let hintCount = 0;
-let hintLevel = 0;
 let hintSet = null;
+let dealing = false;
+let dealTimeout = 0;
 let startedAt = null;
 let elapsed = 0;
 let locked = false;
@@ -101,11 +104,27 @@ function flashCards(indices, cssClass) {
 }
 
 function clearHint() {
-  hintLevel = 0;
   hintSet = null;
   hintButton.textContent = `Подсказка (+${HINT_PENALTY_SECONDS} с)`;
-  hintButton.disabled = false;
-  buttonElements.forEach(button => button.classList.remove('hinted'));
+  hintButton.disabled = dealing;
+}
+
+function clearSelection() {
+  for (const index of selection) {
+    buttonElements[index].classList.remove('selected');
+    buttonElements[index].setAttribute('aria-pressed', 'false');
+  }
+  selection = [];
+}
+
+function finishDeal() {
+  if (!dealing) return;
+  window.clearTimeout(dealTimeout);
+  dealing = false;
+  boardElement.classList.remove('dealing');
+  hintButton.disabled = completed;
+  message('Найди все шесть сетов. Время идёт!');
+  renderTimer();
 }
 
 function renderProgress() {
@@ -139,6 +158,7 @@ function renderBoard() {
     button.type = 'button';
     button.setAttribute('aria-label', `${index + 1}: ${cardLabel(card)}`);
     button.setAttribute('aria-pressed', 'false');
+    button.style.setProperty('--deal-delay', `${index * DEAL_STEP_MS}ms`);
     button.innerHTML = cardSvg(card, 'board');
     button.addEventListener('click', () => chooseCard(index));
     boardElement.append(button);
@@ -147,7 +167,7 @@ function renderBoard() {
 }
 
 function chooseCard(index) {
-  if (locked || completed) return;
+  if (locked || completed || dealing) return;
   if (selection.includes(index)) {
     selection = selection.filter(i => i !== index);
     buttonElements[index].classList.remove('selected');
@@ -202,35 +222,35 @@ function chooseCard(index) {
 }
 
 function giveHint() {
-  if (completed || locked) return;
-  if (hintSet === null || found.has(keyForSet(hintSet))) {
-    hintSet = availableSets.find(indices => !found.has(keyForSet(indices)));
-    hintLevel = 0;
-  }
-  if (!hintSet || hintLevel >= 3) return;
+  if (completed || locked || dealing) return;
+  // A hint acts as the next real card tap. Prefer completing the player's
+  // existing choice, even if they already selected one or two cards.
+  const move = chooseHintMove(availableSets, found, selection, hintSet);
+  if (!move) return;
+  if (move.clearSelection) clearSelection();
+
+  hintSet = move.set;
   hintCount += 1;
   persistActiveSession();
-  // Update immediately rather than waiting for the next animation frame.
   renderTimer();
-  hintLevel = Math.min(3, hintLevel + 1);
-  buttonElements.forEach(button => button.classList.remove('hinted'));
-  hintSet.slice(0, hintLevel).forEach(i => buttonElements[i].classList.add('hinted'));
-  if (hintLevel < 3) {
-    message(hintLevel === 1
-      ? `Одна карта подсвечена · +${HINT_PENALTY_SECONDS} с`
-      : `Подсвечены две карты · +${HINT_PENALTY_SECONDS} с`);
-    hintButton.textContent = 'Ещё подсказка';
-  } else {
-    message(`Подсвечен полный сет · +${HINT_PENALTY_SECONDS} с`);
-    hintButton.textContent = 'Сет показан';
-    hintButton.disabled = true;
+
+  const previouslyFound = found.size;
+  chooseCard(move.index);
+  // chooseCard handles completing a set (including clearing hint state).
+  if (found.size === previouslyFound) {
+    hintButton.textContent = `Ещё подсказка (+${HINT_PENALTY_SECONDS} с)`;
+    message(`Карта выбрана · +${HINT_PENALTY_SECONDS} с`);
   }
 }
 
 function reset(seedValue, resumedSession = null) {
   cancelAnimationFrame(frameId);
+  window.clearTimeout(dealTimeout);
+  dealing = false;
+  boardElement.classList.remove('dealing');
   clearFeedback();
   clearHint();
+
   seed = seedValue;
   board = generateBoard(seed);
   availableSets = findSets(board);
@@ -239,20 +259,37 @@ function reset(seedValue, resumedSession = null) {
   selection = [];
   elapsed = 0;
   hintCount = resumedSession?.hintCount ?? 0;
-  startedAt = resumedSession?.startedAt ?? Date.now();
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const animatedDeal = !resumedSession && !reducedMotion;
+  // Match the original game's timing: the 12 cards are dealt at 255ms
+  // intervals, then the timer starts once the final card has settled.
+  startedAt = resumedSession?.startedAt ?? Date.now() + (animatedDeal ? DEAL_DURATION_MS : 0);
+  if (resumedSession && startedAt > Date.now()) startedAt = Date.now();
+
   completed = false;
   locked = false;
+  dealing = animatedDeal;
+  boardElement.classList.toggle('dealing', animatedDeal);
+  hintButton.disabled = dealing;
   $('#stats-button').hidden = true;
   $('#seed-input').value = seed;
   const url = new URL(location.href);
   url.searchParams.set('seed', seed);
   history.replaceState(null, '', url);
+
   renderBoard();
   renderProgress();
   renderFound();
   renderTimer();
   persistActiveSession();
-  message('Найди все шесть сетов. Время идёт с появления расклада.');
+
+  if (animatedDeal) {
+    message('Раскладываем карты…');
+    dealTimeout = window.setTimeout(finishDeal, DEAL_DURATION_MS);
+  } else {
+    message('Найди все шесть сетов. Время идёт!');
+  }
 }
 
 function renderStats() {
@@ -318,7 +355,7 @@ document.querySelectorAll('dialog [data-close]').forEach(button => {
 document.addEventListener('visibilitychange', () => {
   // Wall-clock elapsed time includes background time. Refresh display on return.
   if (!document.hidden && !completed) {
-    cancelAnimationFrame(frameId);
+    if (dealing && Date.now() >= startedAt) finishDeal();
     renderTimer();
   }
 });

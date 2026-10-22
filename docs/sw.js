@@ -1,7 +1,7 @@
-const CACHE_NAME = 'web-set-v3';
+const CACHE_NAME = 'web-set-v4';
 const APP_FILES = [
   './', './index.html', './src/app.js', './src/engine.js', './src/cards.js',
-  './src/storage.js', './src/time.js', './src/styles.css', './icons/icon.svg', './icons/apple-touch-icon.png', './manifest.webmanifest'
+  './src/storage.js', './src/time.js', './src/deal.js', './src/hints.js', './src/styles.css', './icons/icon.svg', './icons/apple-touch-icon.png', './manifest.webmanifest'
 ];
 
 self.addEventListener('install', event => {

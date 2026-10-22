@@ -37,7 +37,7 @@ body { min-height: 100svh; }
 .metric-time .metric-number { font-size: 21px; }
 .progress-track { position: absolute; bottom: 0; left: 0; right: 0; height: 4px; border-radius: 9px; background: #e6e8e6; overflow: hidden; }
 .progress-value { height: 100%; width: 0; background: #33a474; transition: width 280ms ease; }
-.play-area { min-height: 0; }
+.play-area { min-height: 0; overflow: hidden; }
 .game-board {
   height: 100%; width: 100%;
   display: grid;
@@ -172,3 +172,17 @@ body { min-height: 100svh; }
 }
 .game-info { padding-bottom: 16px; }
 @media (max-height: 650px) { .game-info { padding-bottom: 14px; } }
+
+/* Daily SET reference video: 12 sequential card arrivals at ~255ms cadence.
+   Cards sweep in from the lower right. The timer begins after the last settles. */
+.game-board.dealing .game-card {
+  pointer-events: none;
+  animation: deal-card 300ms cubic-bezier(.19, .73, .28, 1) both;
+  animation-delay: var(--deal-delay, 0ms);
+  will-change: opacity, transform;
+}
+@keyframes deal-card {
+  0% { opacity: 0; transform: translate3d(45vw, 45vh, 0) scale(.73) rotate(6deg); }
+  28% { opacity: 1; }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0); }
+}
